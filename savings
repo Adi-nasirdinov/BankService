@@ -1,40 +1,16 @@
-  app:
-    build: .
-    environment:
-      DB_URL: jdbc:postgresql://db:5432/bankdb
-      DB_USER: postgres
-      DB_PASSWORD: 123
-    depends_on:
-      - db
-    networks:
-      - app-network
 
 
-      curl.exe -X PUT http://localhost:8080/accounts/1/withdraw `
-        -H "Content-Type: application/json" `
-        -d "{\`"amount\`": 100.00}"
+            # создать счёт
+            Invoke-RestMethod -Uri "http://localhost:8080/accounts" -Method POST -ContentType "application/json" -Body '{"owner_name": "Alex", "balance": 500.00}'
 
+            # пополнить
+            Invoke-RestMethod -Uri "http://localhost:8080/accounts/1/deposit" -Method PUT -ContentType "application/json" -Body '{"amount": 100}'
 
-        curl.exe -X PUT http://localhost:8080/accounts/1/deposit `
-          -H "Content-Type: application/json" `
-          -d "{\`"amount\`": 250.50}"
+            # снять
+            Invoke-RestMethod -Uri "http://localhost:8080/accounts/1/withdraw" -Method PUT -ContentType "application/json" -Body '{"amount": 50}'
 
+            # посмотреть
+            Invoke-RestMethod -Uri "http://localhost:8080/accounts/1"
 
-          curl.exe -X POST http://localhost:8080/accounts `
-            -H "Content-Type: application/json" `
-            -d "{\`"owner_name\`": \`"Petr\`", \`"balance\`": 500.00}"
-
-
-            curl.exe -X GET http://localhost:8080/accounts/1
-
-
-            -----------------------------------------------
-
-            $jobs = 1..20 | ForEach-Object {
-                Start-Job -ScriptBlock {
-                    Invoke-RestMethod -Uri "http://localhost:8080/accounts/1/withdraw" -Method PUT -ContentType "application/json" -Body '{"amount": 10}'
-                }
-            }
-
-            $jobs | Wait-Job | Receive-Job
-            $jobs | Remove-Job
+            #перевод от счёта 1 к счёту 4 на сумму 100
+            Invoke-RestMethod -Uri "http://localhost:8080/accounts/1/transfer" -Method PUT -ContentType "application/json" -Body '{"toAccountId": 4, "amount": 100}'

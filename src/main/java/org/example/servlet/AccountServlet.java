@@ -6,6 +6,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.example.dto.AmountRequest;
 import org.example.dto.BalanceChangeResponse;
+import org.example.dto.TransferRequest;
+import org.example.dto.TransferResponse;
 import org.example.exceptions.AccountNotFoundException;
 import org.example.exceptions.InsufficientFoundsException;
 import org.example.model.Account;
@@ -66,60 +68,57 @@ public class AccountServlet extends HttpServlet {
         return Long.parseLong(path);
     }
 
-    protected void doPut(HttpServletRequest req, HttpServletResponse resp ) throws IOException {
-        //PUT/accounts/{id}/deposit
-        //PUT/accounts/{id}/withdraw
+    protected void doPut(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         resp.setContentType("application/json");
         resp.setCharacterEncoding("UTF-8");
 
         String pathInfo = req.getPathInfo();
         String[] parts = pathInfo.split("/");
 
-        Long id =Long.parseLong(parts[1]);
+        Long id = Long.parseLong(parts[1]);
         String operation = parts[2];
 
-        AmountRequest amountRequest = objectMapper.readValue(req.getInputStream(), AmountRequest.class);
+        try {
+            if ("deposit".equals(operation)) {
+                AmountRequest amountRequest = objectMapper.readValue(req.getInputStream(), AmountRequest.class);
+                BalanceChangeResponse response = accountService.deposit(id, amountRequest.getAmount());
+                resp.getWriter().write(objectMapper.writeValueAsString(response));
 
-        if (amountRequest.getAmount() == null || amountRequest.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            resp.getWriter().write("{\"Ошбка\":\"веденная сумма должна быть больше нуля\"}");
-            return;
-        }
+            } else if ("withdraw".equals(operation)) {
 
-        try{
-            BalanceChangeResponse response;
-            if("deposit".equals(operation)){
-                response = accountService.deposit(id,amountRequest.getAmount());
+                AmountRequest amountRequest = objectMapper.readValue(req.getInputStream(), AmountRequest.class);
+                BalanceChangeResponse response = accountService.withdraw(id, amountRequest.getAmount());
 
-            }else if("withdraw".equals(operation)){
-                response = accountService.withdraw(id, amountRequest.getAmount());
+                resp.getWriter().write(objectMapper.writeValueAsString(response));
 
-            }else{
+
+            } else if ("transfer".equals(operation)) {
+
+                TransferRequest transferRequest = objectMapper.readValue(req.getInputStream(), TransferRequest.class);
+                TransferResponse response = accountService.transfer(id, transferRequest.getToAccountId(), transferRequest.getAmount());
+                resp.getWriter().write(objectMapper.writeValueAsString(response));
+
+            } else {
                 resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 return;
             }
 
-            String json = objectMapper.writeValueAsString(response);
-            resp.getWriter().write(json);
             resp.setStatus(HttpServletResponse.SC_OK);
 
-
-        }catch(AccountNotFoundException e){
+        } catch (AccountNotFoundException e) {
             resp.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            resp.getWriter().write("{\"error\":\"Account not found\"}");
-        }catch(InsufficientFoundsException e){
+            resp.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
+
+        } catch (InsufficientFoundsException e) {
+
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
 
 
-            String jsonError = String.format(
-                    "{\"ОШИБКА\":\"Запрошенная сумма больше доступной\", \"Запрошено\": %s, \"Доступно\": %s}",
-                    e.getRequested(),
-                    e.getAvailable()
-            );
-
-            resp.getWriter().write(jsonError);
+        } catch (IllegalArgumentException e) {
+            resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            resp.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
         }
     }
-
 
 }

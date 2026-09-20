@@ -28,12 +28,5 @@ public class FakeAccountRepository implements AccountRepository {
         return account;
     }
 
-    @Override
-    public void updateBalance(Long id, BigDecimal newBalance) {
-        Account account = storage.get(id);
-        if(account != null) {
-            account.setBalance(newBalance);
-        }
 
-    }
 }
