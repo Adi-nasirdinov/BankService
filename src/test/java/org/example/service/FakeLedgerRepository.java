@@ -4,11 +4,12 @@ import org.example.model.LedgerEntry;
 import org.example.repository.LedgerRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
 public class FakeLedgerRepository implements LedgerRepository {
-    private final List<LedgerEntry> entries = new ArrayList<>();
+    private final List<LedgerEntry> entries = Collections.synchronizedList(new ArrayList<>());
     private long nextId = 1;
 
     @Override

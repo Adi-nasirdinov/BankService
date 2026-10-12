@@ -3,30 +3,39 @@ package org.example.service;
 import org.example.model.Account;
 import org.example.repository.AccountRepository;
 
-import java.math.BigDecimal;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class FakeAccountRepository implements AccountRepository {
-    private final Map<Long, Account> storage = new HashMap<>();
-    private long nextId = 1;
+    private final Map<Long, Account> storage = new ConcurrentHashMap<>();
+    private final AtomicLong nextId = new AtomicLong(1);
 
+    /**
+     * Вспомогательный метод для тестов
+     */
     public void addAccount(Account account) {
-        account.setId(nextId++);
-        storage.put(account.getId(), account);
+        save(account);
     }
 
     @Override
-    public Account findById(Long id) {
-        return storage.get(id);
+    public Optional<Account> findById(Long id) {
+        if (id == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(storage.get(id));
     }
 
     @Override
     public Account save(Account account) {
-        account.setId(nextId++);
+        // Если ID еще не присвоен (новый аккаунт), генерируем новый
+        if (account.getId() == null) {
+            account.setId(nextId.getAndIncrement());
+        }
+
+        // Сохраняем или обновляем аккаунт по его текущему ID
         storage.put(account.getId(), account);
         return account;
     }
-
-
 }

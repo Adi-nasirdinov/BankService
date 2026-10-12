@@ -30,10 +30,10 @@ public class Main {
 //        LedgerEntry entry = new LedgerEntry(1L, new BigDecimal("100.00"), EntryType.CREDIT, UUID.randomUUID().toString());
 //        ledgerRepository.save(entry);
 //        System.out.println(ledgerRepository.sumByAccountId(1L));
-
-        AccountRepository repository = new JdbcAccountRepository();
         LedgerRepository ledgerRepository = new JdbcLedgerRepository();
-        AccountService service = new AccountServiceImpl(repository, ledgerRepository);
+        AccountRepository accountRepository = new JdbcAccountRepository(ledgerRepository);
+
+        AccountService service = new AccountServiceImpl(accountRepository, ledgerRepository);
 
         Server server = new Server(8080);
         ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);

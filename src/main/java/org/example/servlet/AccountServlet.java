@@ -4,8 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.example.dto.AmountRequest;
-import org.example.dto.BalanceChangeResponse;
+
 import org.example.dto.TransferRequest;
 import org.example.dto.TransferResponse;
 import org.example.exceptions.AccountNotFoundException;
@@ -16,7 +15,7 @@ import org.example.service.AccountService;
 
 
 import java.io.IOException;
-import java.math.BigDecimal;
+
 
 public class AccountServlet extends HttpServlet {
     private final AccountService accountService;
@@ -79,20 +78,7 @@ public class AccountServlet extends HttpServlet {
         String operation = parts[2];
 
         try {
-            if ("deposit".equals(operation)) {
-                AmountRequest amountRequest = objectMapper.readValue(req.getInputStream(), AmountRequest.class);
-                BalanceChangeResponse response = accountService.deposit(id, amountRequest.getAmount());
-                resp.getWriter().write(objectMapper.writeValueAsString(response));
-
-            } else if ("withdraw".equals(operation)) {
-
-                AmountRequest amountRequest = objectMapper.readValue(req.getInputStream(), AmountRequest.class);
-                BalanceChangeResponse response = accountService.withdraw(id, amountRequest.getAmount());
-
-                resp.getWriter().write(objectMapper.writeValueAsString(response));
-
-
-            } else if ("transfer".equals(operation)) {
+             if ("transfer".equals(operation)) {
 
                 TransferRequest transferRequest = objectMapper.readValue(req.getInputStream(), TransferRequest.class);
                 TransferResponse response = accountService.transfer(id, transferRequest.getToAccountId(), transferRequest.getAmount());

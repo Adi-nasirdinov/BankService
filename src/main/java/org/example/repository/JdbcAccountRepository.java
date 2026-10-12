@@ -5,15 +5,19 @@ import org.example.model.Account;
 
 import java.math.BigDecimal;
 import java.sql.*;
+import java.util.Optional;
 
 public class JdbcAccountRepository implements AccountRepository {
 
+    private final LedgerRepository ledgerRepository;
 
-
+    public JdbcAccountRepository(LedgerRepository ledgerRepository) {
+        this.ledgerRepository = ledgerRepository;
+    }
 
     @Override
+    public Optional<Account> findById(Long id) {
 
-    public Account findById(Long id) {
         String sql = "SELECT id, owner_name FROM accounts WHERE id = ?";
 
         try (Connection conn = DBConnection.getConnection();
@@ -23,10 +27,9 @@ public class JdbcAccountRepository implements AccountRepository {
             ResultSet rs = stmt.executeQuery();
 
             if (rs.next()) {
-
-                return mapRow(rs);
+                return Optional.of(mapRow(rs));
             } else {
-                return null;
+                return Optional.empty();
             }
 
         } catch (SQLException e) {
@@ -34,35 +37,47 @@ public class JdbcAccountRepository implements AccountRepository {
         }
     }
 
+    @Override
     public Account save(Account account) {
-        String sql ="insert into accounts (owner_name) values(?) returning id";
+        if (account.getId() == null || account.getId() == 0) {
+            String insertSql = "INSERT INTO accounts (owner_name) VALUES (?) RETURNING id";
 
+            try (Connection conn = DBConnection.getConnection();
+                 PreparedStatement prepst = conn.prepareStatement(insertSql)) {
 
-        try(Connection conn = DBConnection.getConnection();
-            PreparedStatement prepst = conn.prepareStatement(sql)){
+                prepst.setString(1, account.getOwner_name());
 
-            prepst.setString(1,account.getOwner_name());
-
-
-            ResultSet rs = prepst.executeQuery();
-            if(rs.next()){
-                account.setId(rs.getLong("id"));
+                ResultSet rs = prepst.executeQuery();
+                if (rs.next()) {
+                    account.setId(rs.getLong("id"));
+                }
+                return account;
+            } catch (SQLException e) {
+                throw new RuntimeException("Ошибка при создании счета", e);
             }
-            return account;
-        }catch(SQLException e){
-            throw new RuntimeException("Ошибка при создании счета", e);
-        }
+        } else {
+            String updateSql = "UPDATE accounts SET owner_name = ? WHERE id = ?";
 
+            try (Connection conn = DBConnection.getConnection();
+                 PreparedStatement prepst = conn.prepareStatement(updateSql)) {
+
+                prepst.setString(1, account.getOwner_name());
+                prepst.setLong(2, account.getId());
+
+                prepst.executeUpdate();
+                return account;
+            } catch (SQLException e) {
+                throw new RuntimeException("Ошибка при обновлении счета", e);
+            }
+        }
     }
 
+    private Account mapRow(ResultSet rs) throws SQLException {
 
-    private Account mapRow(ResultSet rs) throws SQLException{
-        Account account = new Account();
-        account.setId(rs.getLong("id"));
-        account.setOwner_name(rs.getString("owner_name"));
-        //account.setBalance(rs.getBigDecimal("balance"));
-        return account;
+        String owner_name = rs.getString("owner_name");
+        Long id = rs.getLong("id");
 
-
+        BigDecimal currentBalance = ledgerRepository.sumByAccountId(id);
+        return new Account(id, owner_name, currentBalance);
     }
 }
