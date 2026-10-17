@@ -9,11 +9,14 @@ import org.example.repository.AccountRepository;
 import org.example.repository.LedgerRepository;
 
 import java.math.BigDecimal;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class AccountServiceImpl implements AccountService {
     final private AccountRepository accountRepository;
     private final LedgerRepository ledgerRepository;
     private final AccountLockManager lockManager = new AccountLockManager();
+    private final ReentrantLock lock = new ReentrantLock();
 
 
     public AccountServiceImpl(AccountRepository accountRepository, LedgerRepository ledgerRepository) {
@@ -47,37 +50,55 @@ public class AccountServiceImpl implements AccountService {
             secondId = fromAccountId;
         }
 
-        Object firstLock = lockManager.getLock(firstId);
-        Object secondLock = lockManager.getLock(secondId);
+        ReentrantLock firstLock = lockManager.getLock(firstId);
+        ReentrantLock secondLock = lockManager.getLock(secondId);
 
-        synchronized (firstLock) {
-            synchronized (secondLock) {
-                Account fromAccount = getAccount(fromAccountId);
-                Account toAccount = getAccount(toAccountId);
+        try {
+            if (firstLock.tryLock(1, TimeUnit.SECONDS)) {
+                try {
+                    if (secondLock.tryLock(1, TimeUnit.SECONDS)) {
+                        try {
+                            Account fromAccount = getAccount(fromAccountId);
+                            Account toAccount = getAccount(toAccountId);
 
-                BigDecimal fromBalanceBefore = fromAccount.getBalance();
-                BigDecimal toBalanceBefore = toAccount.getBalance();
+                            BigDecimal fromBalanceBefore = fromAccount.getBalance();
+                            BigDecimal toBalanceBefore = toAccount.getBalance();
 
-                LedgerEntry withdrawEntry = fromAccount.withdraw(amount);
-                LedgerEntry depositEntry = toAccount.deposit(amount);
+                            LedgerEntry withdrawEntry = fromAccount.withdraw(amount);
+                            LedgerEntry depositEntry = toAccount.deposit(amount);
 
-                ledgerRepository.save(withdrawEntry);
-                ledgerRepository.save(depositEntry);
+                            ledgerRepository.save(withdrawEntry);
+                            ledgerRepository.save(depositEntry);
 
-                BigDecimal fromBalanceAfter = fromAccount.getBalance();
-                BigDecimal toBalanceAfter = toAccount.getBalance();
+                            BigDecimal fromBalanceAfter = fromAccount.getBalance();
+                            BigDecimal toBalanceAfter = toAccount.getBalance();
 
-                accountRepository.save(fromAccount);
-                accountRepository.save(toAccount);
+                            accountRepository.save(fromAccount);
+                            accountRepository.save(toAccount);
 
-                return new TransferResponse(
-                        fromAccountId, toAccountId,
-                        fromAccount.getOwner_name(), toAccount.getOwner_name(),
-                        amount,
-                        fromBalanceBefore, fromBalanceAfter,
-                        toBalanceBefore, toBalanceAfter
-                );
+                            return new TransferResponse(
+                                    fromAccountId, toAccountId,
+                                    fromAccount.getOwner_name(), toAccount.getOwner_name(),
+                                    amount,
+                                    fromBalanceBefore, fromBalanceAfter,
+                                    toBalanceBefore, toBalanceAfter
+                            );
+                        } finally {
+                            secondLock.unlock();
+                        }
+                    } else {
+                        throw new IllegalStateException("Не удалось заблокировать счет получателя. Попробуйте позже.");
+                    }
+                } finally {
+                    firstLock.unlock();
+                }
+            } else {
+                throw new IllegalStateException("Счет списания занят другой операцией. Попробуйте позже.");
             }
+        }catch (InterruptedException e) {
+
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Операция перевода была прервана", e);
         }
     }
 

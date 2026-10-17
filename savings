@@ -14,3 +14,13 @@
 
             #перевод от счёта 1 к счёту 4 на сумму 100
             Invoke-RestMethod -Uri "http://localhost:8080/accounts/1/transfer" -Method PUT -ContentType "application/json" -Body '{"toAccountId": 4, "amount": 100}'
+
+            #Первая отправка платежа с ключом идемпотентности
+            # Отправляем перевод с уникальным ключом tx-key-001:
+
+
+            Invoke-RestMethod -Uri "http://localhost:8080/accounts/1/transfer" `
+              -Method PUT `
+              -Headers @{"X-Idempotency-Key"="tx-key-001"} `
+              -ContentType "application/json" `
+              -Body '{"toAccountId": 4, "amount": 100}'

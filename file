@@ -1,0 +1,33 @@
+docker exec -it bank_service_db psql -U postgres -d bankdb
+
+
+INSERT INTO ledger_entries (account_id, amount, type, transaction_id)
+VALUES (1, 999999.00, 'DEBIT', 'anomaly_test_01');
+
+
+INSERT INTO ledger_entries (account_id, amount, type, transaction_id)
+VALUES (4, 50000.00, 'CREDIT', 'unbalanced_tx_999');
+
+DELETE FROM ledger_entries WHERE transaction_id IN ('anomaly_test_01', 'unbalanced_tx_999');
+
+CREATE TABLE IF NOT EXISTS reconciliation_runs (
+                id BIGSERIAL PRIMARY KEY,
+                executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                from_ledger_id BIGINT NOT NULL,
+                to_ledger_id BIGINT NOT NULL,
+                is_balanced BOOLEAN NOT NULL,
+                accounts_checked_count INT NOT NULL,
+                total_credit NUMERIC(19, 4) NOT NULL,
+                total_debit NUMERIC(19, 4) NOT NULL,
+                system_delta NUMERIC(19, 4) NOT NULL,
+                anomalies_count INT NOT NULL,
+                anomalies_details TEXT
+            );
+
+docker logs bankservice-app-1
+
+Invoke-RestMethod -Uri "http://localhost:8080/accounts/1/transfer" `
+  -Method PUT `
+  -Headers @{"X-Idempotency-Key"="tx-key-1001"} `
+  -ContentType "application/json" `
+  -Body '{"toAccountId": 4, "amount": 100}'
