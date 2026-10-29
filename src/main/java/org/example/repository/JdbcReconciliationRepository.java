@@ -1,42 +1,28 @@
 package org.example.repository;
 
-import org.example.config.DBConnection;
 import org.example.dto.ReconciliationReport;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
 
-import java.sql.*;
-
+@Repository
 public class JdbcReconciliationRepository {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    public JdbcReconciliationRepository(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
     public long getLastToLedgerId() {
         String sql = "SELECT COALESCE(MAX(to_ledger_id), 0) FROM reconciliation_runs";
-
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
-
-            if (rs.next()) {
-                return rs.getLong(1);
-            }
-            return 0L;
-        } catch (SQLException e) {
-            throw new RuntimeException("Ошибка при получении контрольной точки реконсиляции", e);
-        }
+        Long result = jdbcTemplate.queryForObject(sql, Long.class);
+        return result != null ? result : 0L;
     }
 
     public long getMaxLedgerId() {
         String sql = "SELECT COALESCE(MAX(id), 0) FROM ledger_entries";
-
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
-
-            if (rs.next()) {
-                return rs.getLong(1);
-            }
-            return 0L;
-        } catch (SQLException e) {
-            throw new RuntimeException("Ошибка при получении максимального ID проводки", e);
-        }
+        Long result = jdbcTemplate.queryForObject(sql, Long.class);
+        return result != null ? result : 0L;
     }
 
     public void saveRun(ReconciliationReport report) {
@@ -47,22 +33,17 @@ public class JdbcReconciliationRepository {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setLong(1, report.getFromLedgerId());
-            stmt.setLong(2, report.getToLedgerId());
-            stmt.setBoolean(3, report.isBalanced());
-            stmt.setInt(4, report.getAccountsCheckedCount());
-            stmt.setBigDecimal(5, report.getTotalCredit());
-            stmt.setBigDecimal(6, report.getTotalDebit());
-            stmt.setBigDecimal(7, report.getSystemDelta());
-            stmt.setInt(8, report.getAnomalies().size());
-            stmt.setString(9, String.join("\n", report.getAnomalies()));
-
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            throw new RuntimeException("Ошибка сохранения результатов реконсиляции в БД", e);
-        }
+        jdbcTemplate.update(
+                sql,
+                report.getFromLedgerId(),
+                report.getToLedgerId(),
+                report.isBalanced(),
+                report.getAccountsCheckedCount(),
+                report.getTotalCredit(),
+                report.getTotalDebit(),
+                report.getSystemDelta(),
+                report.getAnomalies().size(),
+                String.join("\n", report.getAnomalies())
+        );
     }
 }
