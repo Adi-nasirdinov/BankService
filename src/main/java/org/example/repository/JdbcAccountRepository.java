@@ -1,40 +1,32 @@
 package org.example.repository;
 
-import org.example.config.DBConnection;
 import org.example.model.Account;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
-import java.sql.*;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Optional;
 
+@Repository
 public class JdbcAccountRepository implements AccountRepository {
 
+    private final JdbcTemplate jdbcTemplate;
     private final LedgerRepository ledgerRepository;
 
-    public JdbcAccountRepository(LedgerRepository ledgerRepository) {
+    public JdbcAccountRepository(JdbcTemplate jdbcTemplate, LedgerRepository ledgerRepository) {
+        this.jdbcTemplate = jdbcTemplate;
         this.ledgerRepository = ledgerRepository;
     }
 
     @Override
     public Optional<Account> findById(Long id) {
-
         String sql = "SELECT id, owner_name FROM accounts WHERE id = ?";
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setLong(1, id);
-            ResultSet rs = stmt.executeQuery();
-
-            if (rs.next()) {
-                return Optional.of(mapRow(rs));
-            } else {
-                return Optional.empty();
-            }
-
-        } catch (SQLException e) {
-            throw new RuntimeException("Ошибка при поиске счёта", e);
-        }
+        return jdbcTemplate.query(sql, (rs, rowNum) -> mapRow(rs), id)
+                .stream()
+                .findFirst();
     }
 
     @Override
@@ -42,42 +34,22 @@ public class JdbcAccountRepository implements AccountRepository {
         if (account.getId() == null || account.getId() == 0) {
             String insertSql = "INSERT INTO accounts (owner_name) VALUES (?) RETURNING id";
 
-            try (Connection conn = DBConnection.getConnection();
-                 PreparedStatement prepst = conn.prepareStatement(insertSql)) {
-
-                prepst.setString(1, account.getOwner_name());
-
-                ResultSet rs = prepst.executeQuery();
-                if (rs.next()) {
-                    account.setId(rs.getLong("id"));
-                }
-                return account;
-            } catch (SQLException e) {
-                throw new RuntimeException("Ошибка при создании счета", e);
-            }
+            Long generatedId = jdbcTemplate.queryForObject(insertSql, Long.class, account.getOwner_name());
+            account.setId(generatedId);
+            return account;
         } else {
             String updateSql = "UPDATE accounts SET owner_name = ? WHERE id = ?";
 
-            try (Connection conn = DBConnection.getConnection();
-                 PreparedStatement prepst = conn.prepareStatement(updateSql)) {
-
-                prepst.setString(1, account.getOwner_name());
-                prepst.setLong(2, account.getId());
-
-                prepst.executeUpdate();
-                return account;
-            } catch (SQLException e) {
-                throw new RuntimeException("Ошибка при обновлении счета", e);
-            }
+            jdbcTemplate.update(updateSql, account.getOwner_name(), account.getId());
+            return account;
         }
     }
 
     private Account mapRow(ResultSet rs) throws SQLException {
-
-        String owner_name = rs.getString("owner_name");
         Long id = rs.getLong("id");
+        String ownerName = rs.getString("owner_name");
 
         BigDecimal currentBalance = ledgerRepository.sumByAccountId(id);
-        return new Account(id, owner_name, currentBalance);
+        return new Account(id, ownerName, currentBalance);
     }
 }
