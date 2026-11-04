@@ -1,41 +1,36 @@
 package org.example.config;
+
 import org.example.dto.ReconciliationReport;
 import org.example.service.ReconciliationService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
 
+@Component
 public class ReconciliationScheduler {
 
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private static final Logger log = LoggerFactory.getLogger(ReconciliationScheduler.class);
     private final ReconciliationService reconciliationService;
 
     public ReconciliationScheduler(ReconciliationService reconciliationService) {
         this.reconciliationService = reconciliationService;
     }
 
-    public void start() {
-        scheduler.scheduleAtFixedRate(() -> {
-            try {
-                System.out.println("[RECONCILIATION] Запуск сверки балансов...");
-                ReconciliationReport report = reconciliationService.runReconciliation();
+    @Scheduled(initialDelay = 5000, fixedRate = 30000)
+    public void runReconciliation() {
+        try {
+            log.info("[RECONCILIATION] Запуск сверки балансов...");
+            ReconciliationReport report = reconciliationService.runReconciliation();
 
-
-                if (report.isBalanced()) {
-                    System.out.println("[RECONCILIATION] Сверка успешно завершена. Ошибок не обнаружено.");
-
-                } else {
-
-                    System.err.println("[RECONCILIATION ALERT] Обнаружены аномалии в системе!");
-                    report.getAnomalies().forEach(System.err::println);
-                }
-            } catch (Exception e) {
-                System.err.println("[RECONCILIATION ERROR] Сбой при выполнении сверки: " + e.getMessage());
+            if (report.isBalanced()) {
+                log.info("[RECONCILIATION] Сверка успешно завершена. Ошибок не обнаружено.");
+            } else {
+                log.error("[RECONCILIATION ALERT] Обнаружены аномалии в системе!");
+                report.getAnomalies().forEach(log::error);
             }
-        }, 5, 30, TimeUnit.SECONDS);
-    }
-
-    public void stop() {
-        scheduler.shutdown();
+        } catch (Exception e) {
+            log.error("[RECONCILIATION ERROR] Сбой при выполнении сверки: {}", e.getMessage(), e);
+        }
     }
 }

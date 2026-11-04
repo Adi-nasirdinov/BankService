@@ -21,21 +21,24 @@ public class AccountServiceImplTest {
     private AccountService service;
     private FakeAccountRepository repository;
     private FakeLedgerRepository ledgerRepository;
+    private AccountLockManager lockManager;
 
     @BeforeEach
     void setUp() {
         repository = new FakeAccountRepository();
         ledgerRepository = new FakeLedgerRepository();
-        service = new AccountServiceImpl(repository, ledgerRepository);
+        lockManager = new AccountLockManager();
+
+        // Передаем lockManager 3-м аргументом
+        service = new AccountServiceImpl(repository, ledgerRepository, lockManager);
     }
 
     @Test
     void depositIncreasesBalance() {
-        // Используем конструктор с именем владельца
         Account account = new Account("Ivan");
-        repository.addAccount(account);
+        repository.save(account);
 
-        BigDecimal balanceBefore = account.getBalance(); // 0.00 по умолчанию
+        BigDecimal balanceBefore = account.getBalance();
         LedgerEntry entry = account.deposit(new BigDecimal("100.00"));
         ledgerRepository.save(entry);
 
@@ -46,7 +49,7 @@ public class AccountServiceImplTest {
     @Test
     void withdrawThrowsWhenInsufficientFunds() {
         Account account = new Account("Ivan");
-        repository.addAccount(account);
+        repository.save(account);
 
         assertThatThrownBy(() -> account.withdraw(new BigDecimal("500.00")))
                 .isInstanceOf(InsufficientFoundsException.class);
@@ -60,7 +63,6 @@ public class AccountServiceImplTest {
 
     @Test
     void withdrawIsThreadSafeUnderConcurrentAccess() throws InterruptedException {
-        // Создаем аккаунт через сервис и пополняем его для теста
         Account account = service.createAccount("Ivan", new BigDecimal("1000.00"));
 
         int threadCount = 20;
@@ -93,7 +95,6 @@ public class AccountServiceImplTest {
 
     @Test
     void depositsOnDifferentAccountsRunConcurrently() throws InterruptedException {
-        // 1. Создаем аккаунты через правильный конструктор
         Account accountA = new Account("A");
         repository.save(accountA);
 
@@ -101,14 +102,12 @@ public class AccountServiceImplTest {
         repository.save(accountB);
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
-        CountDownLatch startLatch = new CountDownLatch(1); // Для синхронного старта потоков
+        CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch doneLatch = new CountDownLatch(2);
-
-        long start = System.currentTimeMillis();
 
         executor.submit(() -> {
             try {
-                startLatch.await(); // Ждем единой команды на старт
+                startLatch.await();
                 LedgerEntry entry = accountA.deposit(new BigDecimal("100.00"));
                 ledgerRepository.save(entry);
             } catch (InterruptedException e) {
@@ -130,13 +129,11 @@ public class AccountServiceImplTest {
             }
         });
 
-        startLatch.countDown(); // Одновременный запуск обоих потоков
+        startLatch.countDown();
         boolean completedInTime = doneLatch.await(2, TimeUnit.SECONDS);
         executor.shutdown();
 
         assertThat(completedInTime).isTrue();
-
-        // Проверяем актуальный баланс через агрегатор LedgerRepository
         assertThat(ledgerRepository.sumByAccountId(accountA.getId())).isEqualByComparingTo("100.00");
         assertThat(ledgerRepository.sumByAccountId(accountB.getId())).isEqualByComparingTo("100.00");
     }
@@ -149,7 +146,6 @@ public class AccountServiceImplTest {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch latch = new CountDownLatch(2);
 
-        // Встречные переводы
         executor.submit(() -> {
             try {
                 service.transfer(accountA.getId(), accountB.getId(), new BigDecimal("50.00"));

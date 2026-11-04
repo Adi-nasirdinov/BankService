@@ -1,19 +1,22 @@
 package org.example.config;
 
-import jakarta.servlet.*;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletResponseWrapper;
-
 import org.example.repository.JdbcIdempotencyRepository;
 import org.example.repository.JdbcIdempotencyRepository.IdempotencyRecord;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.CharArrayWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Optional;
 
-public class IdempotencyFilter implements Filter {
+@Component
+public class IdempotencyFilter extends OncePerRequestFilter {
 
     private final JdbcIdempotencyRepository idempotencyRepository;
 
@@ -22,19 +25,14 @@ public class IdempotencyFilter implements Filter {
     }
 
     @Override
-    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
-            throws IOException, ServletException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
 
-        HttpServletRequest req = (HttpServletRequest) request;
-        HttpServletResponse resp = (HttpServletResponse) response;
-        String pathInfo = req.getPathInfo();
-        String idempotencyKey = req.getHeader("X-Idempotency-Key");
+        String requestURI = request.getRequestURI();
+        String idempotencyKey = request.getHeader("X-Idempotency-Key");
 
-
-
-
-        if (idempotencyKey == null || idempotencyKey.isBlank() || pathInfo == null || !pathInfo.contains("/transfer")) {
-            chain.doFilter(request, response);
+        if (idempotencyKey == null || idempotencyKey.isBlank() || requestURI == null || !requestURI.contains("/transfer")) {
+            filterChain.doFilter(request, response);
             return;
         }
 
@@ -42,59 +40,60 @@ public class IdempotencyFilter implements Filter {
 
         if (record.isPresent()) {
             IdempotencyRecord existing = record.get();
-            resp.setContentType("application/json");
-            resp.setCharacterEncoding("UTF-8");
+            response.setContentType("application/json");
+            response.setCharacterEncoding("UTF-8");
 
             if ("COMPLETED".equals(existing.status())) {
-                resp.setStatus(existing.responseCode());
-                resp.getWriter().write(existing.responseBody());
+                response.setStatus(existing.responseCode());
+                response.getWriter().write(existing.responseBody());
                 return;
-
-
             } else if ("IN_PROGRESS".equals(existing.status())) {
-                resp.setStatus(409);
-                resp.getWriter().write("{\"error\":\"Запрос с этим Idempotency-Key уже обрабатывается\"}");
+                response.setStatus(409);
+                response.getWriter().write("{\"error\":\"Запрос с этим Idempotency-Key уже обрабатывается\"}");
                 return;
             }
         }
 
-
-        Long accountId = extractAccountId(pathInfo);
+        Long accountId = extractAccountId(requestURI);
         boolean created = idempotencyRepository.saveInProgress(idempotencyKey, accountId, "hash");
 
         if (!created) {
-            resp.setStatus(409);
-            resp.getWriter().write("{\"error\":\"Конфликт идемпотентного ключа\"}");
+            response.setStatus(409);
+            response.getWriter().write("{\"error\":\"Конфликт идемпотентного ключа\"}");
             return;
         }
 
-
-        ResponseWrapper responseWrapper = new ResponseWrapper(resp);
+        ResponseWrapper responseWrapper = new ResponseWrapper(response);
 
         try {
-            chain.doFilter(request, responseWrapper);
+            filterChain.doFilter(request, responseWrapper);
 
             String responseBody = responseWrapper.getCapturedResponseBody();
             idempotencyRepository.updateToCompleted(idempotencyKey, responseWrapper.getStatus(), responseBody);
 
-
-            resp.getWriter().write(responseBody);
+            response.getWriter().write(responseBody);
         } catch (Exception e) {
             String errorJson = "{\"error\":\"" + e.getMessage() + "\"}";
             idempotencyRepository.updateToCompleted(idempotencyKey, 400, errorJson);
-            resp.setStatus(400);
-            resp.getWriter().write(errorJson);
+            response.setStatus(400);
+            response.getWriter().write(errorJson);
         }
     }
 
-    private Long extractAccountId(String pathInfo) {
+    private Long extractAccountId(String uri) {
         try {
-            return Long.parseLong(pathInfo.split("/")[1]);
+            // Разбор пути вида /accounts/123/transfer
+            String[] parts = uri.split("/");
+            for (int i = 0; i < parts.length; i++) {
+                if ("accounts".equals(parts[i]) && i + 1 < parts.length) {
+                    return Long.parseLong(parts[i + 1]);
+                }
+            }
+            return 0L;
         } catch (Exception e) {
             return 0L;
         }
     }
-
 
     private static class ResponseWrapper extends HttpServletResponseWrapper {
         private final CharArrayWriter charWriter = new CharArrayWriter();
